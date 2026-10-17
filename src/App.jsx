@@ -92,7 +92,7 @@ useEffect(() => {
 const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/retell/agent-status",
+  `${import.meta.env.VITE_API_URL}/api/retell/agent-status`,
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -128,7 +128,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/dashboard/average-call-time",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/average-call-time",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -158,7 +158,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/dashboard/answer-rate",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/answer-rate",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -191,7 +191,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/dashboard/customer-satisfaction",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/customer-satisfaction",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -256,7 +256,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/dashboard/call-activity",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/call-activity",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -297,7 +297,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/dashboard/stats",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/stats",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -334,7 +334,7 @@ const updateBookingStatus = async (bookingId, status) => {
     setBookingsError("");
 
     const response = await fetch(
-      `http://localhost:5000/api/bookings/${bookingId}/status`,
+      `${import.meta.env.VITE_API_URL}/api/bookings/${bookingId}/status`,
       {
         method: "PATCH",
         
@@ -378,7 +378,7 @@ useEffect(() => {
 const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/bookings",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/bookings",
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -430,7 +430,7 @@ useEffect(() => {
       
 const token = localStorage.getItem("token");
 
-const response = await fetch("http://localhost:5000/api/calls", {
+const response = await fetch("`${import.meta.env.VITE_API_URL}/api/bookings`/api/calls", {
   headers: {
     Authorization: `Bearer ${token}`,
   },
@@ -773,7 +773,7 @@ if (!isLoggedIn) {
 const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "http://localhost:5000/api/bookings",
+  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/bookings",
   {
     headers: {
       Authorization: `Bearer ${token}`,
