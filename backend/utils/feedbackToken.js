@@ -1,0 +1,13 @@
+
+import crypto from "node:crypto";
+
+export function generateFeedbackToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+export function hashFeedbackToken(token) {
+  return crypto
+    .createHash("sha256")
+    .update(token)
+    .digest("hex");
+}
