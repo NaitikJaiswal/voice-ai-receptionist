@@ -41,6 +41,7 @@ app.use(
       "http://localhost:5173",
       "http://localhost:5174",
       "http://localhost:5175",
+      "https://voicedesk-ai-frontend-naitik.onrender.com",
     ],
   })
 );
