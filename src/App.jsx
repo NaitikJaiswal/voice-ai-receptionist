@@ -128,7 +128,7 @@ useEffect(() => {
       const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/dashboard/average-call-time",
+  `${import.meta.env.VITE_API_URL}/api/dashboard/average-call-time`,
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -430,7 +430,8 @@ useEffect(() => {
       
 const token = localStorage.getItem("token");
 
-const response = await fetch("`${import.meta.env.VITE_API_URL}/api/bookings`/api/calls", {
+const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/api/calls`, {
   headers: {
     Authorization: `Bearer ${token}`,
   },
@@ -773,7 +774,7 @@ if (!isLoggedIn) {
 const token = localStorage.getItem("token");
 
 const response = await fetch(
-  "`${import.meta.env.VITE_API_URL}/api/bookings`/api/bookings",
+  `${import.meta.env.VITE_API_URL}/api/bookings`,
   {
     headers: {
       Authorization: `Bearer ${token}`,
