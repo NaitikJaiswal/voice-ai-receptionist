@@ -734,9 +734,7 @@ if (!isLoggedIn) {
 </b>
                     </div>
                   </div>
-                  <p className="mt-5 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                    Demo values only. Connect your voice AI service to display real metrics.
-                  </p>
+                  
                 </section>
               </div>
 
@@ -967,7 +965,7 @@ if (response.status === 401) {
                 <label className="mb-2 block text-sm font-semibold">Greeting message</label>
                 <textarea defaultValue="Hello! Thank you for calling. How may I help you today?" rows={4} className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500" />
               </div>
-              <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-800">These settings are currently local demo values. Saving and live voice calls require a backend integration.</p>
+              
             </section>
           )}
         </div>
