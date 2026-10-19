@@ -111,9 +111,12 @@ function Dashboard({ onLogout }) {
 
   const [callActivity, setCallActivity] = useState([]);
 
-  const [greeting] = useState(() =>
-    new Date().getHours() < 12 ? "morning" : "afternoon"
-  );
+  const [greeting] = useState(() => {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return "morning";
+    if (hour >= 12 && hour < 17) return "afternoon";
+    return "evening";
+  });
 
   // Fetch Retell agent status
   const fetchRetellAgentStatus = async () => {
