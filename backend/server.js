@@ -17,7 +17,6 @@ import {
   generateFeedbackToken,
   hashFeedbackToken,
 } from "./utils/feedbackToken.js";
-import crypto from "node:crypto";
 
 dotenv.config();
 
@@ -27,29 +26,33 @@ const retellClient = new Retell({
   apiKey: process.env.RETELL_API_KEY,
 });
 
-
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
 const PORT = process.env.PORT || 5000;
 
+const allowedOrigins = [
+  "https://voicedesk-ai-frontend-naitik.onrender.com",
+];
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:5174",
-      "http://localhost:5175",
-      "https://voicedesk-ai-frontend-naitik.onrender.com",
-    ],
+    origin: (origin, callback) => {
+      // allow requests with no origin (like mobile apps, curl, Postman)
+      if (!origin) return callback(null, true);
+      if (
+        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+        allowedOrigins.includes(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
+    credentials: true,
   })
 );
 
-
-app.use(express.json());
-app.use("/api/bookings", bookingRoutes);
-app.use("/api/auth", authRoutes);
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -63,6 +66,7 @@ const loginLimiter = rateLimit({
 
 app.use("/api/auth/login", loginLimiter);
 app.use("/api/auth", authRoutes);
+app.use("/api/bookings", bookingRoutes);
 
 
 app.post("/api/test-sms", authMiddleware, async (req, res) => {
@@ -298,8 +302,9 @@ app.post("/api/feedback/:token", async (req, res) => {
 });
 
 
-app.get("/api/dashboard/call-activity",authMiddleware, async (req, res) => {
+app.get("/api/dashboard/call-activity", authMiddleware, async (req, res) => {
   try {
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
     const today = new Date();
     today.setHours(23, 59, 59, 999);
 
@@ -310,6 +315,7 @@ app.get("/api/dashboard/call-activity",authMiddleware, async (req, res) => {
     const dailyCounts = await Call.aggregate([
       {
         $match: {
+          userId: userObjectId,
           $or: [
             { startTime: { $gte: startDate, $lte: today } },
             {
@@ -377,16 +383,17 @@ app.get("/api/dashboard/call-activity",authMiddleware, async (req, res) => {
 
 app.get("/api/dashboard/stats", authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     const [
       totalCalls,
       totalBookings,
       confirmedBookings,
       pendingBookings,
     ] = await Promise.all([
-      Call.countDocuments(),
-      Booking.countDocuments(),
-      Booking.countDocuments({ status: "confirmed" }),
-      Booking.countDocuments({ status: "pending" }),
+      Call.countDocuments({ userId }),
+      Booking.countDocuments({ userId }),
+      Booking.countDocuments({ userId, status: "confirmed" }),
+      Booking.countDocuments({ userId, status: "pending" }),
     ]);
 
     res.json({
@@ -408,11 +415,13 @@ app.get("/api/dashboard/stats", authMiddleware, async (req, res) => {
   }
 });
 
-app.get("/api/dashboard/average-call-time",authMiddleware, async (req, res) => {
+app.get("/api/dashboard/average-call-time", authMiddleware, async (req, res) => {
   try {
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
     const result = await Call.aggregate([
       {
         $match: {
+          userId: userObjectId,
           duration: { $gt: 0 },
         },
       },
@@ -443,15 +452,18 @@ app.get("/api/dashboard/average-call-time",authMiddleware, async (req, res) => {
 });
 
 
-app.get("/api/dashboard/answer-rate",authMiddleware, async (req, res) => {
+app.get("/api/dashboard/answer-rate", authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     const eligibleStatuses = ["ended", "not_connected", "error"];
 
     const [totalCalls, answeredCalls] = await Promise.all([
       Call.countDocuments({
+        userId,
         callStatus: { $in: eligibleStatuses },
       }),
       Call.countDocuments({
+        userId,
         callStatus: { $in: eligibleStatuses },
         duration: { $gt: 0 },
       }),
@@ -480,21 +492,27 @@ app.get("/api/dashboard/answer-rate",authMiddleware, async (req, res) => {
 
 
 
-app.get("/api/dashboard/customer-satisfaction",authMiddleware, async (req, res) => {
+app.get("/api/dashboard/customer-satisfaction", authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
+    const userObjectId = new mongoose.Types.ObjectId(req.user.id);
+
     const [totalRatings, satisfiedRatings, ratingStats] =
       await Promise.all([
         Call.countDocuments({
+          userId,
           customerRating: { $gte: 1, $lte: 5 },
         }),
 
         Call.countDocuments({
+          userId,
           customerRating: { $gte: 4, $lte: 5 },
         }),
 
         Call.aggregate([
           {
             $match: {
+              userId: userObjectId,
               customerRating: { $gte: 1, $lte: 5 },
             },
           },
@@ -546,11 +564,17 @@ app.post("/api/calls/:callId/feedback", (req, res) => {
 
 
 
+
 app.get("/api/calls", authMiddleware, async (req, res) => {
   try {
-    let calls = await Call.find().sort({ createdAt: -1 });
+    // Every account can view only calls assigned to their account.
+    const callFilter = { userId: req.user.id };
 
-    // Check recent Retell calls for missing transcripts or bookings.
+    let calls = await Call.find(callFilter).sort({
+      createdAt: -1,
+    });
+
+    // Recover Retell details only for calls visible to this account.
     for (const savedCall of calls.slice(0, 20)) {
       if (
         !savedCall.callId ||
@@ -560,12 +584,11 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
       }
 
       try {
-        // If the reservation is already saved, don't create it again.
         const existingBooking = await Booking.findOne({
           retellCallId: savedCall.callId,
         });
 
-        // Retrieve Retell data if the transcript or booking is missing.
+        // Do not repeat recovery when the call and booking are complete.
         if (
           savedCall.transcript &&
           existingBooking &&
@@ -578,14 +601,6 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
           savedCall.callId
         );
 
-        console.log("RETELL CALL RECOVERY:", {
-          callId: savedCall.callId,
-          status: call.call_status,
-          hasTranscript: Boolean(call.transcript),
-          hasAnalysis: Boolean(call.call_analysis),
-        });
-
-        // Update the call history.
         const updates = {};
 
         if (call.call_status === "ended") {
@@ -601,7 +616,9 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
         }
 
         if (typeof call.duration_ms === "number") {
-          updates.duration = Math.round(call.duration_ms / 1000);
+          updates.duration = Math.round(
+            call.duration_ms / 1000
+          );
         }
 
         if (call.transcript) {
@@ -614,19 +631,26 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
 
         if (Object.keys(updates).length > 0) {
           await Call.updateOne(
-            { callId: savedCall.callId },
+            {
+              _id: savedCall._id,
+              ...callFilter,
+            },
             { $set: updates }
           );
         }
 
-        // Create a pending booking from completed call analysis.
+        // Do not create a booking unless the call has a known owner.
+        // The shared Retell agent alone cannot identify the account.
+        const ownerId = savedCall.userId;
+
         const extracted =
           call.call_analysis?.custom_analysis_data;
 
         if (
           call.call_status === "ended" &&
           extracted &&
-          !existingBooking
+          !existingBooking &&
+          ownerId
         ) {
           const customerName = extracted.customer_name;
           const phone = extracted.customer_phone;
@@ -649,9 +673,9 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
             bookingTime.trim().length > 0;
 
           const validPartySize =
-            Number.isInteger(partySize) && partySize >= 1;
+            Number.isInteger(partySize) &&
+            partySize >= 1;
 
-          // Accept a date that JavaScript can parse.
           const parsedDate = bookingDate
             ? new Date(bookingDate)
             : null;
@@ -659,15 +683,6 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
           const validDate =
             parsedDate &&
             !Number.isNaN(parsedDate.getTime());
-
-          console.log("BOOKING EXTRACTION CHECK:", {
-            callId: savedCall.callId,
-            validName,
-            validPhone,
-            validDate: Boolean(validDate),
-            validTime,
-            validPartySize,
-          });
 
           if (
             validName &&
@@ -677,9 +692,12 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
             validPartySize
           ) {
             const booking = await Booking.findOneAndUpdate(
-              { retellCallId: savedCall.callId },
+              {
+                retellCallId: savedCall.callId,
+              },
               {
                 $setOnInsert: {
+                  userId: ownerId,
                   retellCallId: savedCall.callId,
                   customerName: customerName.trim(),
                   phone: phone.trim(),
@@ -706,11 +724,6 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
               bookingId: booking?._id,
               status: booking?.status,
             });
-          } else {
-            console.log(
-              "Booking not created: reservation details are incomplete or invalid.",
-              savedCall.callId
-            );
           }
         }
       } catch (retellError) {
@@ -722,8 +735,10 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
       }
     }
 
-    // Return the latest call records.
-    calls = await Call.find().sort({ createdAt: -1 });
+    // Return only calls belonging to the authenticated account.
+    calls = await Call.find(callFilter).sort({
+      createdAt: -1,
+    });
 
     res.json({
       success: true,
@@ -739,6 +754,7 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
     });
   }
 });
+
 
 
 
@@ -788,6 +804,12 @@ console.log(
 );
 
     const call = event.call || event.data?.call;
+    console.log("RETELL PHONE ROUTING:", {
+  callId: call?.call_id,
+  fromNumber: call?.from_number,
+  toNumber: call?.to_number,
+  agentId: call?.agent_id,
+});
 
     if (!call?.call_id) {
       return res.status(400).json({

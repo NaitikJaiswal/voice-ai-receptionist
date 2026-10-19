@@ -6,12 +6,28 @@ import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-// GET: Retrieve all bookings
+// Every account accesses strictly its own bookings.
+const getBookingFilter = (user) => {
+  return { userId: user.id };
+};
+
+// GET: Retrieve bookings for the logged-in account
 router.get("/", authMiddleware, async (req, res) => {
   try {
-    const bookings = await Booking.find().sort({ createdAt: -1 });
-    res.json({ success: true, count: bookings.length, bookings });
+    const filter = getBookingFilter(req.user);
+
+    const bookings = await Booking.find(filter).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      success: true,
+      count: bookings.length,
+      bookings,
+    });
   } catch (error) {
+    console.error("Retrieve bookings error:", error.message);
+
     res.status(500).json({
       success: false,
       message: "Failed to retrieve bookings",
@@ -19,8 +35,8 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// POST: Create a booking
-router.post("/",authMiddleware, async (req, res) => {
+// POST: Create a booking for the logged-in account
+router.post("/", authMiddleware, async (req, res) => {
   try {
     const {
       customerName,
@@ -64,7 +80,9 @@ router.post("/",authMiddleware, async (req, res) => {
       });
     }
 
-    // Prevent another active booking at the same date and time.
+    const normalizedTime = String(bookingTime).trim();
+
+    // Check for an active booking in this account.
     const startOfDay = new Date(parsedDate);
     startOfDay.setUTCHours(0, 0, 0, 0);
 
@@ -72,11 +90,12 @@ router.post("/",authMiddleware, async (req, res) => {
     endOfDay.setUTCHours(23, 59, 59, 999);
 
     const existingBooking = await Booking.findOne({
+      ...getBookingFilter(req.user),
       bookingDate: {
         $gte: startOfDay,
         $lte: endOfDay,
       },
-      bookingTime: String(bookingTime).trim(),
+      bookingTime: normalizedTime,
       status: { $in: ["pending", "confirmed"] },
     });
 
@@ -89,10 +108,11 @@ router.post("/",authMiddleware, async (req, res) => {
     }
 
     const booking = await Booking.create({
+      userId: req.user.id,
       customerName: customerName.trim(),
       phone: phone.trim(),
       bookingDate: parsedDate,
-      bookingTime,
+      bookingTime: normalizedTime,
       partySize: size,
       specialRequests: specialRequests || "",
       status: "pending",
@@ -105,6 +125,7 @@ router.post("/",authMiddleware, async (req, res) => {
     });
   } catch (error) {
     console.error("Create booking error:", error.message);
+
     res.status(500).json({
       success: false,
       message: "Failed to create booking",
@@ -113,7 +134,7 @@ router.post("/",authMiddleware, async (req, res) => {
 });
 
 // PATCH: Update a booking's status
-router.patch("/:id/status",authMiddleware, async (req, res) => {
+router.patch("/:id/status", authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -132,10 +153,18 @@ router.patch("/:id/status",authMiddleware, async (req, res) => {
       });
     }
 
-    const booking = await Booking.findByIdAndUpdate(
-      id,
+    // Regular users can update only their own bookings.
+    // Admins can update any booking.
+    const booking = await Booking.findOneAndUpdate(
+      {
+        _id: id,
+        ...getBookingFilter(req.user),
+      },
       { status },
-      { new: true, runValidators: true }
+      {
+        returnDocument: "after",
+        runValidators: true,
+      }
     );
 
     if (!booking) {
@@ -145,8 +174,13 @@ router.patch("/:id/status",authMiddleware, async (req, res) => {
       });
     }
 
-    res.json({ success: true, booking });
+    res.json({
+      success: true,
+      booking,
+    });
   } catch (error) {
+    console.error("Update booking error:", error.message);
+
     res.status(500).json({
       success: false,
       message: "Failed to update booking",

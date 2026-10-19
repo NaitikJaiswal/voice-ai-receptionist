@@ -3,39 +3,53 @@ import mongoose from "mongoose";
 
 const bookingSchema = new mongoose.Schema(
   {
+    // Associates each booking with its owner
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
     customerName: {
       type: String,
       required: true,
       trim: true,
     },
+
     phone: {
       type: String,
       required: true,
       trim: true,
     },
+
     bookingDate: {
       type: Date,
       required: true,
     },
+
     bookingTime: {
       type: String,
       required: true,
     },
+
     partySize: {
       type: Number,
       required: true,
       min: 1,
     },
+
     specialRequests: {
       type: String,
       default: "",
     },
-    
-retellCallId: {
-  type: String,
-  unique: true,
-  sparse: true,
-},
+
+    retellCallId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
     status: {
       type: String,
       enum: ["pending", "confirmed", "cancelled"],

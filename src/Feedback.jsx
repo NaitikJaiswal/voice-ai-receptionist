@@ -1,6 +1,10 @@
 
 import { useState } from "react";
 
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:5000"
+).replace(/\/+$/, "");
+
 export default function Feedback() {
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
@@ -22,7 +26,7 @@ export default function Feedback() {
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/api/feedback/${encodeURIComponent(token)}`,
+        `${API_URL}/api/feedback/${encodeURIComponent(token)}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
