@@ -27,6 +27,7 @@ const retellClient = new Retell({
 });
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(helmet());
@@ -41,11 +42,26 @@ app.use(
     origin: (origin, callback) => {
       // allow requests with no origin (like mobile apps, curl, Postman)
       if (!origin) return callback(null, true);
-      if (
-        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
-        allowedOrigins.includes(origin)
-      ) {
-        return callback(null, true);
+      try {
+        const url = new URL(origin);
+        if (
+          url.hostname === "localhost" ||
+          url.hostname === "127.0.0.1" ||
+          url.hostname.endsWith(".onrender.com") ||
+          allowedOrigins.includes(origin) ||
+          (process.env.FRONTEND_URL && origin.replace(/\/+$/, "") === process.env.FRONTEND_URL.replace(/\/+$/, ""))
+        ) {
+          return callback(null, true);
+        }
+      } catch {
+        // Fallback simple string match
+        if (
+          /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+          origin.includes(".onrender.com") ||
+          allowedOrigins.includes(origin)
+        ) {
+          return callback(null, true);
+        }
       }
       return callback(null, false);
     },
@@ -588,10 +604,9 @@ app.get("/api/calls", authMiddleware, async (req, res) => {
           retellCallId: savedCall.callId,
         });
 
-        // Do not repeat recovery when the call and booking are complete.
+        // Do not repeat recovery when the call has already ended and has transcript saved.
         if (
           savedCall.transcript &&
-          existingBooking &&
           savedCall.callStatus !== "in_progress"
         ) {
           continue;
@@ -826,6 +841,23 @@ console.log(
       updates.callerNumber = call.from_number;
     }
 
+    const metadataUserId =
+      call.metadata?.voicedeskUserId ||
+      call.opt_in_metadata?.voicedeskUserId;
+
+    if (metadataUserId && mongoose.isValidObjectId(metadataUserId)) {
+      updates.userId = metadataUserId;
+    }
+
+    // If call does not yet have an assigned owner, associate with admin user so it appears in dashboard
+    const existingCall = await Call.findOne({ callId: call.call_id }).select("userId");
+    if (!existingCall?.userId && !updates.userId) {
+      const adminUser = await User.findOne({ role: "admin" }).select("_id");
+      if (adminUser) {
+        updates.userId = adminUser._id;
+      }
+    }
+
     if (eventType === "call_started") {
       updates.callStatus = "in_progress";
       updates.startTime = call.start_timestamp
@@ -1005,35 +1037,54 @@ console.log("BOOKING EXTRACTION CHECK:", {
         const parsedDate = new Date(`${bookingDate}T00:00:00.000Z`);
 
         if (!Number.isNaN(parsedDate.getTime())) {
-          await Booking.findOneAndUpdate(
-            { retellCallId: call.call_id },
-            {
-              $setOnInsert: {
-                retellCallId: call.call_id,
-                customerName: customerName.trim(),
-                phone: phone.trim(),
-                bookingDate: parsedDate,
-                bookingTime: String(bookingTime),
-                partySize,
-                specialRequests:
-                  typeof specialRequests === "string"
-                    ? specialRequests
-                    : "",
-                status: "pending",
-              },
-            },
-            {
-              upsert: true,
-              new: true,
-              runValidators: true,
-              setDefaultsOnInsert: true,
-            }
-          );
+          let bookingUserId =
+            savedCall?.userId ||
+            updates.userId ||
+            call.metadata?.voicedeskUserId ||
+            call.opt_in_metadata?.voicedeskUserId;
 
-          console.log(
-            "Booking processed for Retell call:",
-            call.call_id
-          );
+          if (!bookingUserId || !mongoose.isValidObjectId(bookingUserId)) {
+            const adminUser = await User.findOne({ role: "admin" }).select("_id");
+            bookingUserId = adminUser?._id;
+          }
+
+          if (bookingUserId) {
+            await Booking.findOneAndUpdate(
+              { retellCallId: call.call_id },
+              {
+                $setOnInsert: {
+                  userId: bookingUserId,
+                  retellCallId: call.call_id,
+                  customerName: customerName.trim(),
+                  phone: phone.trim(),
+                  bookingDate: parsedDate,
+                  bookingTime: String(bookingTime),
+                  partySize,
+                  specialRequests:
+                    typeof specialRequests === "string"
+                      ? specialRequests
+                      : "",
+                  status: "pending",
+                },
+              },
+              {
+                upsert: true,
+                new: true,
+                runValidators: true,
+                setDefaultsOnInsert: true,
+              }
+            );
+
+            console.log(
+              "Booking processed for Retell call:",
+              call.call_id
+            );
+          } else {
+            console.log(
+              "Booking skipped: could not determine account owner for call:",
+              call.call_id
+            );
+          }
         } else {
           console.log("Booking skipped: invalid booking date");
         }
@@ -1067,9 +1118,10 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-app.get("/api/retell/agent-status",authMiddleware, async (req, res) => {
+app.get("/api/retell/agent-status", authMiddleware, async (req, res) => {
   try {
-    const agentId = "agent_76db0f126fc885bf9a5374d855";
+    const agentId =
+      process.env.RETELL_AGENT_ID || "agent_76db0f126fc885bf9a5374d855";
 
     if (!process.env.RETELL_API_KEY) {
       return res.status(500).json({
@@ -1116,50 +1168,52 @@ app.get("/api/retell/agent-status",authMiddleware, async (req, res) => {
   }
 });
 
-app.post("/retell/v3/create-web-call", authMiddleware, async (req, res) => {
-  try {
-    console.log("RETELL CONFIG CHECK:", {
-  hasApiKey: Boolean(process.env.RETELL_API_KEY),
-  hasAgentId: Boolean(process.env.RETELL_AGENT_ID)
-});
+app.post(
+  ["/retell/v3/create-web-call", "/api/retell/v3/create-web-call"],
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const agentId =
+        process.env.RETELL_AGENT_ID ||
+        req.body?.agent_id ||
+        "agent_76db0f126fc885bf9a5374d855";
 
-if (!process.env.RETELL_AGENT_ID) {
-  return res.status(500).json({
-    success: false,
-    message: "RETELL_AGENT_ID is missing on the deployed backend"
-  });
-}
-    if (!process.env.RETELL_API_KEY) {
-      return res.status(500).json({
-        success: false,
-        message: "Retell API key is not configured",
+      console.log("RETELL CONFIG CHECK:", {
+        hasApiKey: Boolean(process.env.RETELL_API_KEY),
+        hasAgentId: Boolean(agentId),
       });
-    }
 
-    // Never accept the account ID from the browser.
-    const userId = req.user.id;
-
-    const retellResponse = await fetch(
-      "https://api.retellai.com/v3/create-web-call",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-  ...req.body,
-
-  // Always use the agent configured on the backend.
-  agent_id: process.env.RETELL_AGENT_ID,
-
-  // Associate the call with the authenticated account.
-  metadata: {
-    voicedeskUserId: userId,
-  },
-}),
+      if (!process.env.RETELL_API_KEY) {
+        return res.status(500).json({
+          success: false,
+          message: "Retell API key is not configured",
+        });
       }
-    );
+
+      // Never accept the account ID from the browser.
+      const userId = req.user.id;
+
+      const retellResponse = await fetch(
+        "https://api.retellai.com/v3/create-web-call",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            ...req.body,
+
+            // Always use configured or resolved agent ID.
+            agent_id: agentId,
+
+            // Associate the call with the authenticated account.
+            metadata: {
+              voicedeskUserId: userId,
+            },
+          }),
+        }
+      );
 
     const data = await retellResponse.json();
 

@@ -162,6 +162,7 @@ router.patch("/:id/status", authMiddleware, async (req, res) => {
       },
       { status },
       {
+        new: true,
         returnDocument: "after",
         runValidators: true,
       }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Login from "./Login.jsx";
 import RetellCall from "./RetellCall.jsx";
 import {
@@ -43,11 +43,11 @@ export default function App() {
     }
   });
 
-  const handleLogout = () => {
+  const handleLogout = useCallback(() => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setIsLoggedIn(false);
-  };
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -67,7 +67,7 @@ export default function App() {
     } catch {
       // Ignore token parse failure in effect
     }
-  }, [isLoggedIn]);
+  }, [isLoggedIn, handleLogout]);
 
   if (!isLoggedIn) {
     return <Login onLogin={() => setIsLoggedIn(true)} />;
@@ -80,7 +80,38 @@ function Dashboard({ onLogout }) {
   const [activePage, setActivePage] = useState("Dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [agentEnabled, setAgentEnabled] = useState(true);
+  const [agentEnabled, setAgentEnabled] = useState(() => {
+    return localStorage.getItem("voicedesk_agent_enabled") !== "false";
+  });
+  const [agentName, setAgentName] = useState(() => {
+    return (
+      localStorage.getItem("voicedesk_agent_name") ||
+      "VoiceDesk Receptionist"
+    );
+  });
+  const [greetingMessage, setGreetingMessage] = useState(() => {
+    return (
+      localStorage.getItem("voicedesk_greeting_msg") ||
+      "Hello! Thank you for calling. How may I help you today?"
+    );
+  });
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
+  const toggleAgent = () => {
+    setAgentEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem("voicedesk_agent_enabled", String(next));
+      return next;
+    });
+  };
+
+  const handleSaveSettings = (e) => {
+    e.preventDefault();
+    localStorage.setItem("voicedesk_agent_name", agentName.trim());
+    localStorage.setItem("voicedesk_greeting_msg", greetingMessage.trim());
+    setSettingsSaved(true);
+    setTimeout(() => setSettingsSaved(false), 2500);
+  };
 
   const [retellAgentStatus, setRetellAgentStatus] = useState(null);
   const [retellStatusLoading, setRetellStatusLoading] = useState(true);
@@ -112,15 +143,24 @@ function Dashboard({ onLogout }) {
 
   const [callActivity, setCallActivity] = useState([]);
 
-  const [greeting] = useState(() => {
+  const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 12) return "morning";
     if (hour >= 12 && hour < 17) return "afternoon";
     return "evening";
-  });
+  };
+
+  const [greeting, setGreeting] = useState(getGreeting);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setGreeting(getGreeting());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Fetch Retell agent status
-  const fetchRetellAgentStatus = async () => {
+  const fetchRetellAgentStatus = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -145,10 +185,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setRetellStatusLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Fetch average call time
-  const fetchAverageCallTime = async () => {
+  const fetchAverageCallTime = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -174,10 +214,10 @@ function Dashboard({ onLogout }) {
     } catch (error) {
       console.error("Failed to fetch average call time:", error);
     }
-  };
+  }, [onLogout]);
 
   // Fetch answer rate
-  const fetchAnswerRate = async () => {
+  const fetchAnswerRate = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -202,10 +242,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setAnswerRateLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Fetch customer satisfaction
-  const fetchCustomerSatisfaction = async () => {
+  const fetchCustomerSatisfaction = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -235,10 +275,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setSatisfactionLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Fetch call activity
-  const fetchCallActivity = async () => {
+  const fetchCallActivity = useCallback(async () => {
     try {
       const token = localStorage.getItem("token");
       if (!token) return;
@@ -264,10 +304,10 @@ function Dashboard({ onLogout }) {
     } catch (error) {
       console.error("Failed to load call activity:", error);
     }
-  };
+  }, [onLogout]);
 
   // Fetch dashboard stats
-  const fetchDashboardStats = async () => {
+  const fetchDashboardStats = useCallback(async () => {
     try {
       setStatsLoading(true);
       const token = localStorage.getItem("token");
@@ -293,10 +333,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setStatsLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Fetch bookings
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     try {
       setBookingsLoading(true);
       setBookingsError("");
@@ -333,10 +373,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setBookingsLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Fetch calls
-  const fetchCalls = async () => {
+  const fetchCalls = useCallback(async () => {
     try {
       setCallsLoading(true);
       setCallsError("");
@@ -371,10 +411,10 @@ function Dashboard({ onLogout }) {
     } finally {
       setCallsLoading(false);
     }
-  };
+  }, [onLogout]);
 
   // Update booking status
-  const updateBookingStatus = async (bookingId, status) => {
+  const updateBookingStatus = useCallback(async (bookingId, status) => {
     try {
       setBookingsError("");
 
@@ -410,28 +450,54 @@ function Dashboard({ onLogout }) {
     } catch (error) {
       setBookingsError(error.message || "Failed to update booking");
     }
-  };
+  }, [onLogout]);
 
   // Run all fetches on Dashboard mount
   useEffect(() => {
-    fetchRetellAgentStatus();
-    fetchAverageCallTime();
-    fetchAnswerRate();
-    fetchCustomerSatisfaction();
-    fetchCallActivity();
-    fetchDashboardStats();
-    fetchBookings();
-    fetchCalls();
-  }, []);
+    let isSubscribed = true;
+
+    const loadAll = async () => {
+      if (!isSubscribed) return;
+      await Promise.allSettled([
+        fetchRetellAgentStatus(),
+        fetchAverageCallTime(),
+        fetchAnswerRate(),
+        fetchCustomerSatisfaction(),
+        fetchCallActivity(),
+        fetchDashboardStats(),
+        fetchBookings(),
+        fetchCalls(),
+      ]);
+    };
+
+    loadAll();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [
+    fetchRetellAgentStatus,
+    fetchAverageCallTime,
+    fetchAnswerRate,
+    fetchCustomerSatisfaction,
+    fetchCallActivity,
+    fetchDashboardStats,
+    fetchBookings,
+    fetchCalls,
+  ]);
 
   const calls = callRecords
     .map((call, idx) => ({
       id: call._id || call.callId || `call-${idx}`,
       name: call.callerNumber || "Unknown caller",
       number: call.callerNumber || "Number unavailable",
-      time: call.startTime
-        ? new Date(call.startTime).toLocaleString("en-IN")
-        : "Time unavailable",
+      time: (() => {
+        if (!call.startTime) return "Time unavailable";
+        const d = new Date(call.startTime);
+        return isNaN(d.getTime())
+          ? "Time unavailable"
+          : d.toLocaleString("en-IN");
+      })(),
       duration: `${Math.floor((call.duration || 0) / 60)}m ${
         (call.duration || 0) % 60
       }s`,
@@ -455,9 +521,19 @@ function Dashboard({ onLogout }) {
     }
   })();
 
-  const initials = user?.name
-    ? user.name
+  const formatDisplayName = (rawName) => {
+    if (!rawName) return "";
+    return rawName.includes(" ")
+      ? rawName
+      : rawName.replace(/([a-z])([A-Z])/g, "$1 $2");
+  };
+
+  const displayName = formatDisplayName(user?.name);
+
+  const initials = displayName
+    ? displayName
         .split(" ")
+        .filter(Boolean)
         .map((n) => n[0])
         .join("")
         .toUpperCase()
@@ -580,7 +656,7 @@ function Dashboard({ onLogout }) {
                 <div>
                   <h2 className="text-2xl font-bold">
                     Good {greeting}
-                    {user?.name ? `, ${user.name}` : ""}!
+                    {displayName ? `, ${displayName}` : ""}!
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
                     Here's what's happening with your receptionist.
@@ -861,17 +937,18 @@ function Dashboard({ onLogout }) {
                             Table for {booking.partySize}
                           </p>
                           <p className="mt-1 text-xs text-slate-400">
-                            {booking.bookingDate
-                              ? new Date(booking.bookingDate).toLocaleDateString(
-                                  "en-IN",
-                                  {
+                            {(() => {
+                              if (!booking.bookingDate) return "Date unavailable";
+                              const d = new Date(booking.bookingDate);
+                              return isNaN(d.getTime())
+                                ? "Date unavailable"
+                                : d.toLocaleDateString("en-IN", {
                                     day: "numeric",
                                     month: "short",
                                     year: "numeric",
                                     timeZone: "UTC",
-                                  }
-                                )
-                              : "Date unavailable"}
+                                  });
+                            })()}
                             {" · "}
                             {booking.bookingTime}
                           </p>
@@ -989,8 +1066,8 @@ function Dashboard({ onLogout }) {
                   </p>
                 </div>
                 <button
-                  onClick={() => setAgentEnabled(!agentEnabled)}
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                  onClick={toggleAgent}
+                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
                     agentEnabled
                       ? "bg-green-50 text-green-700"
                       : "bg-slate-100 text-slate-600"
@@ -1000,26 +1077,44 @@ function Dashboard({ onLogout }) {
                 </button>
               </div>
 
-              <div className="mt-5">
-                <label className="mb-2 block text-sm font-semibold">
-                  Agent name
-                </label>
-                <input
-                  defaultValue="VoiceDesk Receptionist"
-                  className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500"
-                />
-              </div>
+              <form onSubmit={handleSaveSettings} className="space-y-5">
+                <div className="mt-5">
+                  <label className="mb-2 block text-sm font-semibold">
+                    Agent name
+                  </label>
+                  <input
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500"
+                  />
+                </div>
 
-              <div className="mt-5">
-                <label className="mb-2 block text-sm font-semibold">
-                  Greeting message
-                </label>
-                <textarea
-                  defaultValue="Hello! Thank you for calling. How may I help you today?"
-                  rows={4}
-                  className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500"
-                />
-              </div>
+                <div>
+                  <label className="mb-2 block text-sm font-semibold">
+                    Greeting message
+                  </label>
+                  <textarea
+                    value={greetingMessage}
+                    onChange={(e) => setGreetingMessage(e.target.value)}
+                    rows={4}
+                    className="w-full rounded-xl border border-slate-200 p-3 outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition"
+                  >
+                    Save Settings
+                  </button>
+                  {settingsSaved && (
+                    <span className="text-sm font-medium text-green-600 animate-fade-in">
+                      ✓ Settings saved successfully
+                    </span>
+                  )}
+                </div>
+              </form>
             </section>
           )}
         </div>

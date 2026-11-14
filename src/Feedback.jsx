@@ -1,17 +1,47 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const API_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:5000"
 ).replace(/\/+$/, "");
 
 export default function Feedback() {
+  const token =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/").filter(Boolean).pop() || ""
+      : "";
+
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState(() => (token ? "idle" : "error"));
+  const [message, setMessage] = useState(() =>
+    token ? "" : "Invalid feedback link."
+  );
 
-  const token = window.location.pathname.split("/").pop();
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+    fetch(`${API_URL}/api/feedback/${encodeURIComponent(token)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (!data.success) {
+          setStatus("error");
+          setMessage(
+            data.message ||
+              "This feedback link has expired or has already been used."
+          );
+        }
+      })
+      .catch(() => {
+        // Network offline or error - allow user to attempt submitting
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   async function handleSubmit(event) {
     event.preventDefault();

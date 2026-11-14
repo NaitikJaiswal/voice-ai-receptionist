@@ -17,7 +17,7 @@ const createToken = (user) => {
       role: user.role,
     },
     process.env.JWT_SECRET,
-    { expiresIn: "2h" }
+    { expiresIn: "7d" }
   );
 };
 
@@ -71,7 +71,10 @@ router.post("/register", async (req, res) => {
     }
 
     const existingUser = await User.findOne({
-      email: cleanEmail,
+      $or: [
+        { email: cleanEmail },
+        { email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") } },
+      ],
     });
 
     if (existingUser) {
@@ -135,15 +138,29 @@ router.post("/login", async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user = await User.findOne({
+    let user = await User.findOne({
       email: cleanEmail,
     }).select("+passwordHash");
+
+    if (!user) {
+      user = await User.findOne({
+        email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      }).select("+passwordHash");
+    }
 
     if (!user) {
       return res.status(404).json({
         success: false,
         code: "USER_NOT_FOUND",
         message: "No account found with this email. Please register first.",
+      });
+    }
+
+    if (!user.passwordHash) {
+      return res.status(401).json({
+        success: false,
+        code: "INVALID_PASSWORD",
+        message: "Password not set for this account. Please reset your password.",
       });
     }
 
@@ -198,7 +215,13 @@ router.post("/reset-password", async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: cleanEmail });
+    let user = await User.findOne({ email: cleanEmail });
+
+    if (!user) {
+      user = await User.findOne({
+        email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      });
+    }
 
     if (!user) {
       return res.status(404).json({
@@ -241,7 +264,13 @@ router.get("/check-email", async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: cleanEmail });
+    let existingUser = await User.findOne({ email: cleanEmail });
+
+    if (!existingUser) {
+      existingUser = await User.findOne({
+        email: { $regex: new RegExp(`^${cleanEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      });
+    }
 
     return res.json({
       success: true,

@@ -40,7 +40,9 @@ export default function RetellCall() {
       }
 
       const call = retellClient.createWebCall({
-        agent_id: "agent_76db0f126fc885bf9a5374d855",
+        agent_id:
+          import.meta.env.VITE_RETELL_AGENT_ID ||
+          "agent_76db0f126fc885bf9a5374d855",
 
         hooks: {
           onStatus: (newStatus) => setStatus(newStatus),
