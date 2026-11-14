@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Login from "./Login.jsx";
+import RetellCall from "./RetellCall.jsx";
 import {
   LayoutDashboard,
   Phone,
@@ -594,7 +595,9 @@ function Dashboard({ onLogout }) {
                   </span>
                 </button>
               </div>
-
+<div className="mb-7">
+  <RetellCall />
+</div>
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   {

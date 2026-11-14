@@ -1116,6 +1116,83 @@ app.get("/api/retell/agent-status",authMiddleware, async (req, res) => {
   }
 });
 
+app.post("/retell/v3/create-web-call", authMiddleware, async (req, res) => {
+  try {
+    if (!process.env.RETELL_API_KEY) {
+      return res.status(500).json({
+        success: false,
+        message: "Retell API key is not configured",
+      });
+    }
+
+    // Never accept the account ID from the browser.
+    const userId = req.user.id;
+
+    const retellResponse = await fetch(
+      "https://api.retellai.com/v3/create-web-call",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RETELL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+  ...req.body,
+
+  // Always use the agent configured on the backend.
+  agent_id: process.env.RETELL_AGENT_ID,
+
+  // Associate the call with the authenticated account.
+  metadata: {
+    voicedeskUserId: userId,
+  },
+}),
+      }
+    );
+
+    const data = await retellResponse.json();
+
+    if (!retellResponse.ok) {
+      return res.status(retellResponse.status).json(data);
+    }
+
+    if (!data.call_id) {
+      return res.status(502).json({
+        success: false,
+        message: "Retell did not return a call ID",
+      });
+    }
+
+    // Create the call record before processing its webhook.
+    await Call.findOneAndUpdate(
+      { callId: data.call_id },
+      {
+        $set: {
+  userId,
+  callStatus: "in_progress",
+},
+$setOnInsert: {
+  callId: data.call_id,
+},
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    return res.status(200).json(data);
+  } catch (error) {
+    console.error("Authenticated Retell call creation failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Could not create Retell web call",
+    });
+  }
+});
+
 async function startServer() {
   try {
     if (!process.env.MONGODB_URI) {
