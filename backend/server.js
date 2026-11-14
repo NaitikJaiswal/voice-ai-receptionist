@@ -1118,6 +1118,17 @@ app.get("/api/retell/agent-status",authMiddleware, async (req, res) => {
 
 app.post("/retell/v3/create-web-call", authMiddleware, async (req, res) => {
   try {
+    console.log("RETELL CONFIG CHECK:", {
+  hasApiKey: Boolean(process.env.RETELL_API_KEY),
+  hasAgentId: Boolean(process.env.RETELL_AGENT_ID)
+});
+
+if (!process.env.RETELL_AGENT_ID) {
+  return res.status(500).json({
+    success: false,
+    message: "RETELL_AGENT_ID is missing on the deployed backend"
+  });
+}
     if (!process.env.RETELL_API_KEY) {
       return res.status(500).json({
         success: false,
