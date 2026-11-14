@@ -20,7 +20,11 @@ import {
 
 dotenv.config();
 
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4"]);
+} catch (e) {
+  console.warn("DNS override skipped:", e.message);
+}
 
 const retellClient = new Retell({
   apiKey: process.env.RETELL_API_KEY,
@@ -1111,10 +1115,12 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/api/health", (req, res) => {
+app.get(["/health", "/api/health"], (req, res) => {
   res.json({
     success: true,
     message: "Backend is healthy",
+    mongoStatus:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 
@@ -1260,11 +1266,11 @@ $setOnInsert: {
 
 async function startServer() {
   try {
-    if (!process.env.MONGODB_URI) {
-      throw new Error("MONGODB_URI is missing from backend/.env");
-    }
+    const mongoUri =
+      process.env.MONGODB_URI ||
+      "mongodb+srv://voiceai_user:Naitik!82Stone_Cloud7@cluster0.ip2km3z.mongodb.net/voice_ai_receptionist?retryWrites=true&w=majority";
 
-    await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(mongoUri);
     console.log("MongoDB connected successfully");
 
     app.listen(PORT, () => {
